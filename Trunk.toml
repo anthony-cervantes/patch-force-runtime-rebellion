@@ -1,0 +1,20 @@
+[build]
+dist = "dist"
+public_url = "./"
+inject_scripts = false
+
+[serve]
+addresses = ["127.0.0.1"]
+port = 8080
+open = false
+
+[watch]
+watch = ["src", "assets", "Cargo.toml", "index.html", "Trunk.toml"]
+
+[[hooks]]
+stage = "post_build"
+command = "sh"
+command_arguments = [
+  "-c",
+  "cp \"target/wasm32-unknown-unknown/$TRUNK_PROFILE/patch_force_runtime_rebellion.wasm\" \"$TRUNK_STAGING_DIR/patch_force_runtime_rebellion.wasm\" && rm -f \"$TRUNK_STAGING_DIR\"/patch_force_runtime_rebellion-*.js \"$TRUNK_STAGING_DIR\"/patch_force_runtime_rebellion-*_bg.wasm && perl -0pi -e 's#\\s*<script>\"use strict\";\\s*\\(function \\(\\) \\{.*?</script>##s' \"$TRUNK_STAGING_DIR/index.html\""
+]

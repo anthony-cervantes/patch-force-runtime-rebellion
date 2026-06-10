@@ -1,0 +1,9 @@
+/target/
+/dist/
+/.trunk/
+*.wasm
+*.dSYM/
+.DS_Store
+.env
+.env.*
+.playwright-cli/
