@@ -45,7 +45,7 @@ impl SpriteRenderer {
         camera_x: f32,
         y_offset: f32,
         aim: Vec2,
-        gun_color: Color,
+        _gun_color: Color,
     ) -> bool {
         let Some(texture) = self.hero.as_ref() else {
             return false;
@@ -93,7 +93,6 @@ impl SpriteRenderer {
             color_u8!(255, 213, 94, 230),
         );
 
-        self.draw_player_gun_overlay(player, camera_x, y_offset, dir, gun_color);
         true
     }
 
@@ -458,88 +457,6 @@ impl SpriteRenderer {
                 },
             );
         }
-    }
-
-    fn draw_player_gun_overlay(
-        &self,
-        player: &Player,
-        camera_x: f32,
-        y_offset: f32,
-        aim: Vec2,
-        gun_color: Color,
-    ) {
-        let dir = normalized_or_facing(aim, player.facing);
-        let side = if dir.x.abs() > 0.08 {
-            dir.x.signum()
-        } else {
-            player.facing
-        };
-        let shoulder = player.center() + vec2(side * 5.0, -4.0);
-        let muzzle = player.muzzle_pos(dir);
-        let perp = vec2(-dir.y, dir.x);
-        let start = shoulder - dir * 7.0;
-        let stock = shoulder - dir * 14.0;
-        let grip = shoulder - dir * 2.0 + vec2(0.0, 11.0);
-        let outline = sprite::ink();
-
-        draw_line(
-            stock.x - camera_x,
-            stock.y + y_offset,
-            shoulder.x - camera_x,
-            shoulder.y + y_offset,
-            8.0,
-            outline,
-        );
-        draw_line(
-            stock.x - camera_x,
-            stock.y + y_offset,
-            shoulder.x - camera_x,
-            shoulder.y + y_offset,
-            4.0,
-            color_u8!(38, 45, 58, 255),
-        );
-        draw_line(
-            start.x - camera_x,
-            start.y + y_offset,
-            muzzle.x - camera_x,
-            muzzle.y + y_offset,
-            10.0,
-            outline,
-        );
-        draw_line(
-            start.x - camera_x,
-            start.y + y_offset,
-            muzzle.x - camera_x,
-            muzzle.y + y_offset,
-            6.0,
-            color_u8!(28, 34, 46, 255),
-        );
-        draw_line(
-            (start + perp * 1.8).x - camera_x,
-            (start + perp * 1.8).y + y_offset,
-            (muzzle + perp * 1.8).x - camera_x,
-            (muzzle + perp * 1.8).y + y_offset,
-            3.0,
-            gun_color,
-        );
-        draw_line(
-            shoulder.x - camera_x,
-            shoulder.y + y_offset,
-            grip.x - camera_x,
-            grip.y + y_offset,
-            6.0,
-            outline,
-        );
-        draw_line(
-            shoulder.x - camera_x,
-            shoulder.y + y_offset,
-            grip.x - camera_x,
-            grip.y + y_offset,
-            2.5,
-            color_u8!(255, 213, 94, 255),
-        );
-        draw_circle(muzzle.x - camera_x, muzzle.y + y_offset, 4.3, outline);
-        draw_circle(muzzle.x - camera_x, muzzle.y + y_offset, 2.0, gun_color);
     }
 }
 

@@ -182,6 +182,8 @@ impl Level {
                 continue;
             }
             let active = self.hazard_active(index, time);
+            let charge = (time * 2.7 + hazard.phase).sin();
+            let warning = !active && charge > -0.45;
             let x = hazard.rect.x - camera_x;
             let y = hazard.rect.y + y_offset;
             draw_rectangle(
@@ -189,7 +191,11 @@ impl Level {
                 y - 14.0,
                 hazard.rect.w + 16.0,
                 12.0,
-                color_u8!(31, 35, 48, 255),
+                if warning {
+                    color_u8!(255, 213, 94, 185)
+                } else {
+                    color_u8!(31, 35, 48, 255)
+                },
             );
             draw_rectangle(
                 x,
@@ -209,6 +215,21 @@ impl Level {
                     hazard.rect.w * 0.3,
                     hazard.rect.h,
                     color_u8!(255, 238, 180, 230),
+                );
+            } else if warning {
+                draw_rectangle(
+                    x + hazard.rect.w * 0.15,
+                    y,
+                    hazard.rect.w * 0.7,
+                    hazard.rect.h,
+                    color_u8!(255, 213, 94, 105),
+                );
+                draw_text(
+                    "!",
+                    x + hazard.rect.w * 0.5 - 4.0,
+                    y - 17.0,
+                    18.0,
+                    color_u8!(255, 245, 212, 255),
                 );
             }
         }

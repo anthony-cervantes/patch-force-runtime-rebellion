@@ -1,3 +1,4 @@
+use crate::audio::{AudioBank, Sfx};
 use crate::boss::Boss;
 use crate::enemy::{Enemy, EnemyKind};
 use crate::level::{Level, SCREEN_H, SCREEN_W};
@@ -20,6 +21,12 @@ enum Screen {
     Victory,
 }
 
+struct Notice {
+    text: String,
+    timer: f32,
+    color: Color,
+}
+
 pub struct Game {
     screen: Screen,
     level: Level,
@@ -35,14 +42,20 @@ pub struct Game {
     elapsed: f32,
     shake_timer: f32,
     shake_strength: f32,
+    damage_flash_timer: f32,
     checkpoint: Vec2,
+    checkpoint_stage: u8,
+    encounter_stage: u8,
+    notices: Vec<Notice>,
+    audio: AudioBank,
     mouse_seen: bool,
     mouse_aim_active: bool,
+    mouse_tip_shown: bool,
     last_mouse_screen: Vec2,
 }
 
 impl Game {
-    pub fn new(renderer: SpriteRenderer) -> Self {
+    pub fn new(renderer: SpriteRenderer, audio: AudioBank) -> Self {
         let level = Level::new();
         let checkpoint = vec2(90.0, 480.0);
         Self {
@@ -60,9 +73,15 @@ impl Game {
             elapsed: 0.0,
             shake_timer: 0.0,
             shake_strength: 0.0,
+            damage_flash_timer: 0.0,
             checkpoint,
+            checkpoint_stage: 0,
+            encounter_stage: 0,
+            notices: Vec::new(),
+            audio,
             mouse_seen: false,
             mouse_aim_active: false,
+            mouse_tip_shown: false,
             last_mouse_screen: Vec2::ZERO,
         }
         .with_run_state()
@@ -147,6 +166,13 @@ impl Game {
                     self.level.section_name(self.player.pos.x),
                     &self.boss,
                 );
+                if self.damage_flash_timer > 0.0 {
+                    ui::draw_damage_flash(self.damage_flash_timer);
+                }
+                if self.screen == Screen::Playing {
+                    self.draw_context_prompts();
+                }
+                self.draw_notices();
                 if self.screen == Screen::Playing {
                     self.draw_mouse_crosshair();
                 }
@@ -171,31 +197,61 @@ impl Game {
         self.update_mouse_aim_state();
         self.elapsed += dt;
         self.shake_timer = (self.shake_timer - dt).max(0.0);
+        self.damage_flash_timer = (self.damage_flash_timer - dt).max(0.0);
         if self.shake_timer == 0.0 {
             self.shake_strength = 0.0;
         }
 
         self.player.update(dt, &self.level);
         self.update_player_mouse_facing();
-        if self.player.pos.x > 2320.0 {
+        if self.player.pos.x > 2320.0 && self.checkpoint_stage < 1 {
             self.checkpoint = vec2(2260.0, 480.0);
+            self.checkpoint_stage = 1;
+            self.audio.play(Sfx::Checkpoint);
+            self.push_notice(
+                "Checkpoint: CI/CD Factory",
+                color_u8!(255, 213, 94, 255),
+                2.6,
+            );
         }
-        if self.player.pos.x > self.level.boss_start + 120.0 {
+        if self.player.pos.x > self.level.boss_start + 120.0 && self.checkpoint_stage < 2 {
             self.checkpoint = vec2(self.level.boss_start + 80.0, 480.0);
+            self.checkpoint_stage = 2;
+            self.audio.play(Sfx::Checkpoint);
+            self.push_notice(
+                "Checkpoint: Production Core",
+                color_u8!(214, 126, 255, 255),
+                2.6,
+            );
         }
 
         if self.player.pos.x > self.level.boss_start {
+            if !self.boss.active {
+                self.player.heal(3);
+                self.player.shield(2.5);
+                self.audio.play(Sfx::Boss);
+                self.push_notice(
+                    "Merge Conflict Mech deployed",
+                    color_u8!(255, 103, 97, 255),
+                    3.0,
+                );
+            }
             self.boss.active = true;
-            self.checkpoint = vec2(self.level.boss_start + 80.0, 480.0);
+            if self.checkpoint_stage < 2 {
+                self.checkpoint = vec2(self.level.boss_start + 80.0, 480.0);
+                self.checkpoint_stage = 2;
+            }
             self.player.pos.x = self.player.pos.x.max(self.level.boss_start + 34.0);
         }
 
         self.handle_shooting();
+        self.update_encounter_waves();
         self.update_enemies(dt);
         self.update_boss(dt);
         self.update_projectiles(dt);
         self.update_pickups(dt);
         self.update_particles(dt);
+        self.update_notices(dt);
         self.handle_player_hazards();
 
         self.camera_x =
@@ -209,6 +265,7 @@ impl Game {
         }
         if self.boss.defeated {
             self.score += 5000;
+            self.audio.play(Sfx::Victory);
             self.screen = Screen::Victory;
         }
     }
@@ -228,6 +285,7 @@ impl Game {
         self.player.fire_cooldown = weapon.fire_delay();
         self.projectiles
             .extend(Projectile::player(muzzle, aim, weapon));
+        self.audio.play(Sfx::Shoot);
         self.particles.push(Particle::new(
             muzzle,
             aim * 70.0,
@@ -238,6 +296,12 @@ impl Game {
     }
 
     fn update_mouse_aim_state(&mut self) {
+        if self.mouse_aim_active && is_key_pressed(KeyCode::K) {
+            self.mouse_aim_active = false;
+            self.push_notice("Keyboard aim restored", color_u8!(255, 213, 94, 255), 2.2);
+            return;
+        }
+
         let (mx, my) = mouse_position();
         let mouse = vec2(mx, my);
         if !self.mouse_seen {
@@ -251,6 +315,14 @@ impl Game {
             || is_mouse_button_pressed(MouseButton::Left)
             || is_mouse_button_down(MouseButton::Left)
         {
+            if !self.mouse_aim_active && !self.mouse_tip_shown {
+                self.push_notice(
+                    "Mouse aim online - K for keyboard",
+                    color_u8!(106, 231, 255, 255),
+                    2.8,
+                );
+                self.mouse_tip_shown = true;
+            }
             self.mouse_aim_active = true;
         }
         self.last_mouse_screen = mouse;
@@ -325,6 +397,40 @@ impl Game {
         draw_circle(mouse.x, mouse.y, 2.0, color_u8!(255, 255, 255, 235));
     }
 
+    fn draw_context_prompts(&self) {
+        if self.elapsed < 6.0 && self.player.pos.x < 420.0 {
+            ui::draw_tip(
+                "Move right. Jump with W / Space.",
+                82.0,
+                color_u8!(255, 245, 212, 255),
+            );
+        } else if self.player.pos.x < 930.0 {
+            ui::draw_tip(
+                "Grab Spread Diff, then fire with J or click.",
+                82.0,
+                color_u8!(255, 213, 94, 255),
+            );
+        } else if (2140.0..3950.0).contains(&self.player.pos.x) {
+            ui::draw_tip(
+                "Red beams cycle. Wait for the warning blink.",
+                82.0,
+                color_u8!(255, 213, 94, 255),
+            );
+        } else if self.boss.active && !self.boss.defeated {
+            ui::draw_tip(
+                "Boss phase shifts as its health drops.",
+                118.0,
+                color_u8!(214, 126, 255, 255),
+            );
+        }
+    }
+
+    fn draw_notices(&self) {
+        for (index, notice) in self.notices.iter().enumerate() {
+            ui::draw_notice(&notice.text, index, notice.timer, notice.color);
+        }
+    }
+
     fn virtual_mouse_position(&self) -> Vec2 {
         let (mx, my) = mouse_position();
         let scale_x = SCREEN_W / screen_width().max(1.0);
@@ -335,6 +441,7 @@ impl Game {
     fn update_enemies(&mut self, dt: f32) {
         let player_pos = self.player.center();
         let mut spawned_shots = Vec::new();
+        let mut took_damage = false;
         let mut took_life_hit = false;
         for enemy in &mut self.enemies {
             if enemy.rect().x > self.camera_x + SCREEN_W + 260.0
@@ -344,12 +451,18 @@ impl Game {
             }
             enemy.update(dt, player_pos, &self.level, &mut spawned_shots);
             if enemy.alive && enemy.rect().overlaps(&self.player.rect()) {
-                took_life_hit |= self.player.take_damage(1, self.checkpoint);
+                let before_health = self.player.health;
+                let before_lives = self.player.lives;
+                let life_lost = self.player.take_damage(1, self.checkpoint);
+                took_damage |= life_lost
+                    || self.player.health != before_health
+                    || self.player.lives != before_lives;
+                took_life_hit |= life_lost;
             }
         }
         self.projectiles.extend(spawned_shots);
-        if took_life_hit {
-            self.shake(0.18, 6.0);
+        if took_damage {
+            self.player_damage_feedback(took_life_hit, "Enemy collision");
         }
     }
 
@@ -368,6 +481,39 @@ impl Game {
             self.shake(shake, 13.0);
         }
         self.enemies.extend(spawned);
+    }
+
+    fn update_encounter_waves(&mut self) {
+        if self.encounter_stage == 0 && self.player.pos.x > 1260.0 {
+            self.encounter_stage = 1;
+            self.push_notice("Runtime ambush incoming", color_u8!(255, 213, 94, 255), 2.2);
+            self.enemies
+                .push(Enemy::new(EnemyKind::ExceptionBat, 1530.0, 230.0, None));
+            self.enemies
+                .push(Enemy::new(EnemyKind::BugCrawler, 1690.0, 456.0, None));
+        }
+
+        if self.encounter_stage == 1 && self.player.pos.x > 2860.0 {
+            self.encounter_stage = 2;
+            self.push_notice(
+                "Factory regression wave",
+                color_u8!(255, 120, 167, 255),
+                2.2,
+            );
+            self.enemies
+                .push(Enemy::new(EnemyKind::TestBot, 3330.0, 398.0, None));
+            self.enemies
+                .push(Enemy::new(EnemyKind::ExceptionBat, 3520.0, 250.0, None));
+        }
+
+        if self.encounter_stage == 2 && self.player.pos.x > 4200.0 && !self.boss.active {
+            self.encounter_stage = 3;
+            self.push_notice("Core breach detected", color_u8!(214, 126, 255, 255), 2.2);
+            self.enemies
+                .push(Enemy::new(EnemyKind::BugCrawler, 4570.0, 456.0, None));
+            self.enemies
+                .push(Enemy::new(EnemyKind::ExceptionBat, 4840.0, 265.0, None));
+        }
     }
 
     fn update_projectiles(&mut self, dt: f32) {
@@ -407,6 +553,8 @@ impl Game {
 
     fn handle_projectile_enemy_hits(&mut self) {
         let mut boss_explosion = false;
+        let mut enemy_hit = false;
+        let mut boss_hit = false;
         for projectile in &mut self.projectiles {
             if !projectile.alive || projectile.owner != ProjectileOwner::Player {
                 continue;
@@ -417,6 +565,7 @@ impl Game {
                     continue;
                 }
                 let killed = enemy.hit(projectile.damage);
+                enemy_hit = true;
                 self.particles.extend(Particle::burst(
                     enemy.center(),
                     color_u8!(255, 213, 94, 255),
@@ -447,6 +596,7 @@ impl Game {
                 && projectile.rect().overlaps(&self.boss.rect())
             {
                 let defeated = self.boss.hit(projectile.damage, &mut self.particles);
+                boss_hit = true;
                 if defeated {
                     boss_explosion = true;
                 }
@@ -456,11 +606,15 @@ impl Game {
 
         self.enemies.retain(|enemy| enemy.alive);
         if boss_explosion {
+            self.audio.play(Sfx::Boss);
             self.shake(0.7, 22.0);
+        } else if boss_hit || enemy_hit {
+            self.audio.play(Sfx::Hit);
         }
     }
 
     fn handle_projectile_player_hits(&mut self) {
+        let mut took_damage = false;
         let mut took_life_hit = false;
         for projectile in &mut self.projectiles {
             if !projectile.alive || projectile.owner == ProjectileOwner::Player {
@@ -468,24 +622,44 @@ impl Game {
             }
             if projectile.rect().overlaps(&self.player.rect()) {
                 projectile.alive = false;
-                took_life_hit |= self.player.take_damage(projectile.damage, self.checkpoint);
+                let before_health = self.player.health;
+                let before_lives = self.player.lives;
+                let life_lost = self.player.take_damage(projectile.damage, self.checkpoint);
+                took_damage |= life_lost
+                    || self.player.health != before_health
+                    || self.player.lives != before_lives;
+                took_life_hit |= life_lost;
             }
         }
-        if took_life_hit {
-            self.shake(0.22, 8.0);
+        if took_damage {
+            self.player_damage_feedback(took_life_hit, "Conflict hit");
         }
     }
 
     fn update_pickups(&mut self, dt: f32) {
+        let mut collected_notices = Vec::new();
         for pickup in &mut self.pickups {
             pickup.update(dt, &self.level);
             if pickup.rect().overlaps(&self.player.rect()) {
                 pickup.collected = true;
+                let kind = pickup.kind;
                 match pickup.kind {
                     PickupKind::Weapon(weapon) => self.player.weapon = weapon,
                     PickupKind::Health => self.player.heal(3),
                     PickupKind::Shield => self.player.shield(6.0),
                 }
+                collected_notices.push(match kind {
+                    PickupKind::Weapon(weapon) => {
+                        (format!("{} equipped", weapon.name()), weapon_color(weapon))
+                    }
+                    PickupKind::Health => {
+                        ("Health restored".to_string(), color_u8!(119, 255, 150, 255))
+                    }
+                    PickupKind::Shield => (
+                        "Test Shield online".to_string(),
+                        color_u8!(147, 176, 255, 255),
+                    ),
+                });
                 self.score += 75;
                 self.particles.extend(Particle::burst(
                     pickup.pos,
@@ -496,6 +670,10 @@ impl Game {
             }
         }
         self.pickups.retain(|pickup| !pickup.collected);
+        for (text, color) in collected_notices {
+            self.audio.play(Sfx::Pickup);
+            self.push_notice(text, color, 2.4);
+        }
     }
 
     fn update_particles(&mut self, dt: f32) {
@@ -503,6 +681,13 @@ impl Game {
             particle.update(dt);
         }
         self.particles.retain(Particle::alive);
+    }
+
+    fn update_notices(&mut self, dt: f32) {
+        for notice in &mut self.notices {
+            notice.timer -= dt;
+        }
+        self.notices.retain(|notice| notice.timer > 0.0);
     }
 
     fn handle_player_hazards(&mut self) {
@@ -516,25 +701,68 @@ impl Game {
                 self.level.hazard_active(index, self.elapsed) && hazard.rect.overlaps(&player_rect)
             });
 
-        if hazard_hit && self.player.take_damage(1, self.checkpoint) {
-            self.shake(0.18, 8.0);
+        if hazard_hit {
+            let before_health = self.player.health;
+            let before_lives = self.player.lives;
+            let life_lost = self.player.take_damage(1, self.checkpoint);
+            if life_lost || self.player.health != before_health || self.player.lives != before_lives
+            {
+                self.player_damage_feedback(life_lost, "Hazard hit");
+            }
+        }
+    }
+
+    fn player_damage_feedback(&mut self, life_lost: bool, source: &str) {
+        self.damage_flash_timer = 0.22;
+        self.audio.play(Sfx::Hit);
+        self.shake(
+            if life_lost { 0.28 } else { 0.16 },
+            if life_lost { 11.0 } else { 6.0 },
+        );
+        self.particles.extend(Particle::burst(
+            self.player.center(),
+            color_u8!(255, 103, 97, 255),
+            if life_lost { 18 } else { 8 },
+            if life_lost { 190.0 } else { 110.0 },
+        ));
+
+        if life_lost {
+            if self.player.lives > 0 {
+                self.push_notice(
+                    format!("Respawned at checkpoint ({})", source),
+                    color_u8!(255, 213, 94, 255),
+                    2.5,
+                );
+            } else {
+                self.push_notice("Patch integrity failed", color_u8!(255, 103, 97, 255), 2.5);
+            }
+        } else {
+            self.push_notice("Patch integrity hit", color_u8!(255, 103, 97, 255), 1.6);
         }
     }
 
     fn reset_run(&mut self) {
         self.level = Level::new();
         self.checkpoint = vec2(90.0, 480.0);
+        self.checkpoint_stage = 0;
+        self.encounter_stage = 0;
         self.player.reset(self.checkpoint);
         self.enemies = starting_enemies();
         self.pickups = starting_pickups();
         self.projectiles.clear();
         self.particles.clear();
+        self.notices.clear();
         self.boss = Boss::new();
         self.camera_x = 0.0;
         self.score = 0;
         self.elapsed = 0.0;
         self.shake_timer = 0.0;
         self.shake_strength = 0.0;
+        self.damage_flash_timer = 0.0;
+        self.mouse_seen = false;
+        self.mouse_aim_active = false;
+        self.mouse_tip_shown = false;
+        self.push_notice("Patch Force deployed", color_u8!(106, 231, 255, 255), 2.0);
     }
 
     fn with_run_state(mut self) -> Self {
@@ -546,6 +774,17 @@ impl Game {
     fn shake(&mut self, seconds: f32, strength: f32) {
         self.shake_timer = self.shake_timer.max(seconds);
         self.shake_strength = self.shake_strength.max(strength);
+    }
+
+    fn push_notice(&mut self, text: impl Into<String>, color: Color, timer: f32) {
+        self.notices.push(Notice {
+            text: text.into(),
+            timer,
+            color,
+        });
+        if self.notices.len() > 3 {
+            self.notices.remove(0);
+        }
     }
 }
 

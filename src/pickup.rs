@@ -55,13 +55,21 @@ impl Pickup {
         let pulse = self.bob.sin() * 2.0;
         let x = self.pos.x - camera_x;
         let y = self.pos.y + y_offset + pulse;
-        let (fill, label) = match self.kind {
-            PickupKind::Weapon(Weapon::PatchRifle) => (color_u8!(106, 231, 255, 255), "P"),
-            PickupKind::Weapon(Weapon::SpreadDiff) => (color_u8!(255, 213, 94, 255), "S"),
-            PickupKind::Weapon(Weapon::RefactorBeam) => (color_u8!(176, 255, 155, 255), "R"),
-            PickupKind::Weapon(Weapon::HotfixSmg) => (color_u8!(255, 120, 167, 255), "H"),
-            PickupKind::Health => (color_u8!(119, 255, 150, 255), "+"),
-            PickupKind::Shield => (color_u8!(147, 176, 255, 255), "T"),
+        let (fill, label, name) = match self.kind {
+            PickupKind::Weapon(Weapon::PatchRifle) => {
+                (color_u8!(106, 231, 255, 255), "P", "Patch Rifle")
+            }
+            PickupKind::Weapon(Weapon::SpreadDiff) => {
+                (color_u8!(255, 213, 94, 255), "S", "Spread Diff")
+            }
+            PickupKind::Weapon(Weapon::RefactorBeam) => {
+                (color_u8!(176, 255, 155, 255), "R", "Refactor Beam")
+            }
+            PickupKind::Weapon(Weapon::HotfixSmg) => {
+                (color_u8!(255, 120, 167, 255), "H", "Hotfix SMG")
+            }
+            PickupKind::Health => (color_u8!(119, 255, 150, 255), "+", "Health"),
+            PickupKind::Shield => (color_u8!(147, 176, 255, 255), "T", "Test Shield"),
         };
 
         draw_circle_lines(x, y, 20.0 + pulse * 0.5, 2.0, color_u8!(240, 248, 255, 120));
@@ -80,5 +88,24 @@ impl Pickup {
         );
         sprite::draw_glint(x - 4.0, y - 4.0, 6.0, color_u8!(255, 255, 255, 210));
         draw_text(label, x - 6.0, y + 7.0, 20.0, color_u8!(7, 10, 21, 255));
+
+        let size = 14;
+        let dims = measure_text(name, None, size, 1.0);
+        let label_x = x - dims.width * 0.5 - 7.0;
+        let label_y = y - 38.0;
+        draw_rectangle(
+            label_x,
+            label_y - 13.0,
+            dims.width + 14.0,
+            18.0,
+            color_u8!(5, 8, 17, 205),
+        );
+        draw_text(
+            name,
+            label_x + 7.0,
+            label_y,
+            size as f32,
+            color_u8!(255, 245, 212, 245),
+        );
     }
 }

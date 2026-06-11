@@ -1,3 +1,4 @@
+mod audio;
 mod boss;
 mod enemy;
 mod game;
@@ -10,6 +11,7 @@ mod sprite;
 mod sprite_renderer;
 mod ui;
 
+use audio::AudioBank;
 use game::Game;
 use macroquad::prelude::*;
 use sprite_renderer::SpriteRenderer;
@@ -28,7 +30,8 @@ fn window_conf() -> Conf {
 #[macroquad::main(window_conf)]
 async fn main() {
     let renderer = SpriteRenderer::load().await;
-    let mut game = Game::new(renderer);
+    let audio = AudioBank::load().await;
+    let mut game = Game::new(renderer, audio);
 
     loop {
         let dt = get_frame_time().clamp(0.0, 1.0 / 30.0);

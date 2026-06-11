@@ -16,6 +16,7 @@ pub struct Boss {
     spawn_timer: f32,
     slam_timer: f32,
     flash_timer: f32,
+    target_pos: Vec2,
 }
 
 impl Boss {
@@ -23,14 +24,15 @@ impl Boss {
         Self {
             pos: vec2(5600.0, 286.0),
             size: vec2(190.0, 194.0),
-            health: 120,
-            max_health: 120,
+            health: 96,
+            max_health: 96,
             active: false,
             defeated: false,
             attack_timer: 1.0,
             spawn_timer: 3.0,
             slam_timer: 4.4,
             flash_timer: 0.0,
+            target_pos: vec2(0.0, 0.0),
         }
     }
 
@@ -59,6 +61,7 @@ impl Boss {
             return;
         }
 
+        self.target_pos = player_pos;
         self.flash_timer = (self.flash_timer - dt).max(0.0);
         let speed = if self.health <= self.max_health / 3 {
             0.55
@@ -152,12 +155,13 @@ impl Boss {
             return;
         }
 
+        let x = self.pos.x - camera_x;
+        let y = self.pos.y + y_offset;
         if renderer.draw_boss(self, camera_x, y_offset) {
+            self.draw_telegraphs(x, y, camera_x, y_offset);
             return;
         }
 
-        let x = self.pos.x - camera_x;
-        let y = self.pos.y + y_offset;
         let outline = sprite::ink();
         let armor = if self.flash_timer > 0.0 {
             WHITE
@@ -375,6 +379,66 @@ impl Boss {
                 66.0 + pulse * 2.0,
                 3.0,
                 color_u8!(255, 103, 97, 155),
+            );
+        }
+        self.draw_telegraphs(x, y, camera_x, y_offset);
+    }
+
+    fn draw_telegraphs(&self, x: f32, y: f32, camera_x: f32, y_offset: f32) {
+        let attack_charge = (0.48 - self.attack_timer).max(0.0) / 0.48;
+        if attack_charge > 0.0 {
+            let origin = vec2(x + 36.0, y + 86.0);
+            let target = vec2(self.target_pos.x - camera_x, self.target_pos.y + y_offset);
+            let dir = (target - origin).normalize_or_zero();
+            let alpha = attack_charge.clamp(0.0, 1.0);
+            for angle in [-0.18_f32, 0.0, 0.18] {
+                let ray = rotate(dir, angle);
+                let warn = Color::new(1.0, 0.83, 0.37, 0.28 + alpha * 0.38);
+                draw_line(
+                    origin.x,
+                    origin.y,
+                    origin.x + ray.x * 520.0,
+                    origin.y + ray.y * 520.0,
+                    3.0,
+                    warn,
+                );
+            }
+            draw_text(
+                "LOCK",
+                origin.x - 22.0,
+                origin.y - 16.0,
+                16.0,
+                color_u8!(255, 213, 94, 230),
+            );
+        }
+
+        let slam_charge = (0.82 - self.slam_timer).max(0.0) / 0.82;
+        if slam_charge > 0.0 {
+            let alpha = slam_charge.clamp(0.0, 1.0);
+            let color = Color::new(1.0, 0.40, 0.36, 0.20 + alpha * 0.45);
+            draw_rectangle(0.0, 458.0 + y_offset, x + 120.0, 12.0, color);
+            draw_rectangle(x + 120.0, 458.0 + y_offset, 960.0 - x, 12.0, color);
+            draw_text(
+                "SLAM",
+                x + 62.0,
+                y + 184.0,
+                18.0,
+                color_u8!(255, 103, 97, 245),
+            );
+        }
+
+        let spawn_charge = (0.72 - self.spawn_timer).max(0.0) / 0.72;
+        if spawn_charge > 0.0 {
+            let pulse = (get_time() as f32 * 24.0).sin().abs();
+            let alpha = spawn_charge.clamp(0.0, 1.0);
+            let color = Color::new(0.60, 1.0, 0.35, 0.22 + alpha * 0.36);
+            draw_circle_lines(x - 116.0, 456.0 + y_offset, 30.0 + pulse * 5.0, 4.0, color);
+            draw_text(
+                "ADD",
+                x - 136.0,
+                430.0 + y_offset,
+                18.0,
+                color_u8!(176, 255, 155, 245),
             );
         }
     }

@@ -6,9 +6,9 @@ The game is an original run-and-gun inspired by classic side-scrolling arcade ac
 
 ## Assets
 
-The playable build uses a mix of Rust/Macroquad-generated effects and attributed Open Gunner pixel-art sprite sheets by Master484 for upgraded player, enemy, boss, and scrolling background visuals. Source and license details are kept in `ASSET_ATTRIBUTION.md`.
+The playable build uses a mix of Rust/Macroquad-generated effects, original generated SFX, and attributed Open Gunner pixel-art sprite sheets by Master484 for upgraded player, enemy, boss, and scrolling background visuals. Source and license details are kept in `ASSET_ATTRIBUTION.md`.
 
-No audio, API keys, tokens, secrets, or `.env` files are required.
+No API keys, tokens, secrets, or `.env` files are required.
 
 ## Controls
 
@@ -17,6 +17,7 @@ No audio, API keys, tokens, secrets, or `.env` files are required.
 - S / Down: crouch
 - J or Left Click: shoot
 - Keyboard direction keys while shooting: eight-direction aim
+- K: return to keyboard aim after mouse aim is active
 - R: restart
 - Enter: start or restart
 - I: instructions from the start screen
